@@ -4,13 +4,25 @@ A mini container runtime written in Rust. Think Docker, but built from scratch a
 
 `crabbox` isolates processes using Linux kernel primitives: `chroot`/`pivot_root`, namespaces, and (soon) cgroups.
 
-## Quick start
+## Install
+
+```bash
+curl -sSf https://raw.githubusercontent.com/sakashimaa/crabbox/main/install.sh | sh
+```
+
+Or manually:
+
+```bash
+cargo install --git https://github.com/sakashimaa/crabbox.git
+```
 
 ### Prerequisites
 
 - Linux (x86_64)
 - Rust 1.94+
 - Root privileges (containers need kernel access)
+
+## Quick start
 
 ### Prepare a rootfs
 
