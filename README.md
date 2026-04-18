@@ -35,11 +35,10 @@ curl -O https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-minir
 tar xzf alpine-minirootfs-3.21.3-x86_64.tar.gz
 ```
 
-### Build and run
+### Run
 
 ```bash
-cargo build
-sudo ./target/debug/crabbox run /tmp/crabbox/alpine /bin/sh
+sudo crabbox run /tmp/crabbox/alpine /bin/sh
 ```
 
 You're now inside an isolated Alpine shell.
@@ -60,13 +59,13 @@ crabbox run <rootfs> <command> [args...]
 
 ```bash
 # Interactive shell
-sudo ./target/debug/crabbox run /tmp/crabbox/alpine /bin/sh
+sudo crabbox run /tmp/crabbox/alpine /bin/sh
 
 # Run a single command
-sudo ./target/debug/crabbox run /tmp/crabbox/alpine /bin/echo "hello from the box"
+sudo crabbox run /tmp/crabbox/alpine /bin/echo "hello from the box"
 
 # Check the container's OS
-sudo ./target/debug/crabbox run /tmp/crabbox/alpine /bin/cat /etc/os-release
+sudo crabbox run /tmp/crabbox/alpine /bin/cat /etc/os-release
 ```
 
 ## Project structure
