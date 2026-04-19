@@ -6,11 +6,16 @@
 
 ```rust
 pub struct ContainerConfig {
+    pub id: String,         // auto-generated 8-char hex ID
     pub rootfs: PathBuf,    // path to the extracted rootfs
     pub command: String,    // command to run inside the container
     pub args: Vec<String>,  // arguments for the command
 }
 ```
+
+### The `id` field
+
+`ContainerConfig::new()` auto-generates a short hex ID (e.g. `7f3a2b1c`) from the system clock's nanoseconds. It's used for the container hostname (`crabbox-7f3a2b1c`) and will become the handle for future `list`/`stop`/`inspect` commands. No dependency on the `uuid` crate — nanosecond resolution is plenty unique per-machine-per-run.
 
 ### Validation
 
@@ -38,6 +43,7 @@ Produces:
 
 ```rust
 ContainerConfig {
+    id: String("7f3a2b1c"),  // auto-generated
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/echo"),
     args: vec!["hello", "world"],
@@ -52,6 +58,7 @@ crabbox run /tmp/crabbox/alpine /bin/sh
 
 ```rust
 ContainerConfig {
+    id: String("9c1d4e8a"),  // auto-generated
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/sh"),
     args: vec![],
@@ -76,10 +83,20 @@ Without this, the container would inherit the host's `PATH` (e.g. `/home/user/.c
 
 ```
 CLI args
-  → ContainerConfig::new() (validate)
+  → ContainerConfig::new()           (validate + generate id)
   → container::run()
-    → filesystem::setup_rootfs()   (chroot + chdir)
-    → filesystem::exec_command()   (execvpe with clean env)
+    → namespaces::unshare_namespaces()  (CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS)
+    → fork()
+        ├─ parent: waitpid(child)       (block until container exits)
+        └─ child (PID 1 in new namespace):
+             → namespaces::set_hostname("crabbox-<id>")
+             → filesystem::setup_rootfs()   (chroot + chdir)
+             → filesystem::mount_proc()     (mount procfs at /proc)
+             → filesystem::exec_command()   (execvpe with clean env)
 ```
 
-The process replaces itself via `exec` — there's no parent process waiting. The container *is* the process.
+The parent process stays alive for the lifetime of the container, waiting on the child via `waitpid`. When the child exits (e.g. user hits Ctrl+D), `waitpid` returns and the parent cleans up naturally — its mount namespace dies with it, taking all container-only mounts (like `/proc`) with it.
+
+### Why fork?
+
+`unshare(CLONE_NEWPID)` only affects **future children**, not the caller. So we unshare first, then fork — the child is PID 1 in the fresh PID namespace. The parent stays in the host's PID space, which is what lets it `waitpid` on the child.

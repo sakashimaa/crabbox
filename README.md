@@ -74,15 +74,16 @@ sudo crabbox run /tmp/crabbox/alpine /bin/cat /etc/os-release
 src/
 ├── main.rs         # CLI parsing (clap)
 ├── config.rs       # ContainerConfig validation
-├── container.rs    # Container lifecycle orchestration
+├── container.rs    # Container lifecycle orchestration (unshare, fork, waitpid)
 ├── filesystem.rs   # chroot/pivot_root, mounts, exec
-└── namespaces.rs   # Namespace setup (unshare, fork)
+└── namespaces.rs   # Namespace setup (unshare, sethostname)
 ```
 
 ## Roadmap
 
 - [x] CLI + chroot isolation
-- [ ] PID, mount, UTS namespaces
+- [x] PID, mount, UTS namespaces
+- [x] Container ID generation
 - [ ] pivot_root (replace chroot)
 - [ ] cgroups v2 (memory/CPU limits)
 - [ ] Networking (veth, bridge, NAT)

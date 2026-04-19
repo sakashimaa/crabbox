@@ -2,6 +2,7 @@ use std::ffi::CString;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use nix::mount::{MsFlags, mount};
 use nix::unistd::{chdir, chroot, execvpe};
 
 pub fn setup_rootfs(rootfs: &Path) -> Result<()> {
@@ -32,4 +33,16 @@ pub fn exec_command(cmd: &str, args: &[String]) -> Result<()> {
     execvpe(&cmd_cstr, &argv, &env).context("failed to exec command")?;
 
     unreachable!()
+}
+
+pub fn mount_proc() -> Result<()> {
+    mount(
+        Some("proc"),
+        "/proc",
+        Some("proc"),
+        MsFlags::empty(),
+        None::<&str>,
+    )
+    .context("failed to mount /proc")?;
+    Ok(())
 }

@@ -1,7 +1,9 @@
 use anyhow::{Result, bail};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct ContainerConfig {
+    pub id: String,
     pub rootfs: PathBuf,
     pub command: String,
     pub args: Vec<String>,
@@ -21,9 +23,15 @@ impl ContainerConfig {
         }
 
         Ok(Self {
+            id: generate_id(),
             rootfs,
             command,
             args,
         })
     }
+}
+
+fn generate_id() -> String {
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    format!("{:08x}", ts.subsec_nanos())
 }
