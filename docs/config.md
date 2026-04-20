@@ -90,13 +90,29 @@ CLI args
         ├─ parent: waitpid(child)       (block until container exits)
         └─ child (PID 1 in new namespace):
              → namespaces::set_hostname("crabbox-<id>")
-             → filesystem::setup_rootfs()   (chroot + chdir)
+             → filesystem::setup_rootfs()   (MS_PRIVATE + bind + pivot_root + cleanup)
              → filesystem::mount_proc()     (mount procfs at /proc)
+             → filesystem::mount_tmp()      (mount tmpfs at /tmp)
              → filesystem::exec_command()   (execvpe with clean env)
 ```
 
-The parent process stays alive for the lifetime of the container, waiting on the child via `waitpid`. When the child exits (e.g. user hits Ctrl+D), `waitpid` returns and the parent cleans up naturally — its mount namespace dies with it, taking all container-only mounts (like `/proc`) with it.
+The parent process stays alive for the lifetime of the container, waiting on the child via `waitpid`. When the child exits (e.g. user hits Ctrl+D), `waitpid` returns and the parent cleans up naturally — its mount namespace dies with it, taking all container-only mounts (like `/proc` and `/tmp`) with it.
 
 ### Why fork?
 
 `unshare(CLONE_NEWPID)` only affects **future children**, not the caller. So we unshare first, then fork — the child is PID 1 in the fresh PID namespace. The parent stays in the host's PID space, which is what lets it `waitpid` on the child.
+
+## Filesystem setup (pivot_root)
+
+`setup_rootfs()` replaces the process's view of `/` with the rootfs directory. It's stricter than `chroot`: the old root gets detached entirely, so a privileged process can't escape back out.
+
+The sequence:
+
+1. **Remount `/` as `MS_PRIVATE` (recursive)** — the kernel rejects `pivot_root` if the new root's parent mount has shared propagation. Systemd mounts `/` as shared on most distros, and `CLONE_NEWNS` inherits that propagation. Without this step, `pivot_root` fails with `EINVAL`.
+2. **Bind-mount the rootfs onto itself** — `pivot_root` requires `new_root` to be a mount point, not just a directory. A self-bind-mount is the cheapest way to satisfy this.
+3. **Create `rootfs/oldroot`** — the `put_old` target where the old root gets parked.
+4. **`pivot_root(rootfs, rootfs/oldroot)`** — the actual root swap. New root is now `/`, old root is at `/oldroot`.
+5. **`chdir("/")`** — move the CWD into the new root (otherwise it still points inside the old root).
+6. **`umount2("/oldroot", MNT_DETACH)` + `remove_dir("/oldroot")`** — detach the old root (lazy unmount, safe even if something is still using it) and remove the empty mountpoint. The container no longer has any reference to the host filesystem.
+
+After `setup_rootfs` returns, `/proc` and `/tmp` are then mounted fresh inside the new root.

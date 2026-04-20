@@ -5,23 +5,29 @@ A mini container runtime in Rust — a Docker clone built from scratch as a lear
 ## Project overview
 
 `crabbox` isolates processes using Linux kernel primitives. The three pillars:
-1. **Filesystem isolation** — chroot/pivot_root
+1. **Filesystem isolation** — pivot_root
 2. **Namespace isolation** — PID, mount, UTS, network (via `unshare`)
 3. **Resource limits** — cgroups v2 (future)
 
 ## Current state
 
-Day 1 complete. Working chroot into Alpine minirootfs.
+Days 1–3 complete. Fully isolated container: own filesystem (pivot_root), own PID tree, own hostname, own mounts.
 
 What works:
 - CLI: `crabbox run <rootfs> <command> [args...]`
-- chroot into rootfs with clean environment (PATH/HOME/TERM)
-- Config validation (rootfs exists, has /bin/sh via symlink_metadata)
+- Container ID (8-char hex) + hostname `crabbox-<id>`
+- Namespaces: `unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS)` + `fork` so child is PID 1
+- `pivot_root` filesystem swap (MS_PRIVATE remount → self-bind → pivot → detach `/oldroot`)
+- Mounts inside container: `/proc` (procfs), `/tmp` (tmpfs)
+- Clean environment (`execvpe` with explicit PATH/HOME/TERM)
+- Config validation (rootfs exists, has `/bin/sh` via symlink_metadata)
 
-What's next (see `docs/plan/1-3.md` for full plan):
-- Day 2: namespaces (PID, mount, UTS) via unshare + fork
-- Day 3: pivot_root, cleanup, container ID
-- Day 4+: cgroups, networking, image management, overlay FS, Crabfile
+What's next (Day 4+):
+- cgroups v2 (memory/CPU limits)
+- Networking (veth, bridge, NAT)
+- Image management (download rootfs by name)
+- Overlay FS (layers)
+- Crabfile / crab-compose
 
 ## Architecture
 
@@ -30,11 +36,11 @@ src/
 ├── main.rs         # CLI parsing (clap derive)
 ├── config.rs       # ContainerConfig — validates rootfs and command
 ├── container.rs    # Orchestrates container lifecycle
-├── filesystem.rs   # chroot/pivot_root, mounts, execvpe
-└── namespaces.rs   # Namespace setup (placeholder, Day 2)
+├── filesystem.rs   # pivot_root, mounts (/proc, /tmp), execvpe
+└── namespaces.rs   # unshare_namespaces, set_hostname
 ```
 
-Flow: CLI args → ContainerConfig::new() → container::run() → filesystem::setup_rootfs() → filesystem::exec_command()
+Flow: CLI args → `ContainerConfig::new()` → `container::run()` → `namespaces::unshare_namespaces()` → `fork()` → child: `set_hostname` → `filesystem::setup_rootfs` (pivot_root) → `mount_proc` → `mount_tmp` → `exec_command`; parent: `waitpid`.
 
 ## Build and test
 
@@ -59,4 +65,5 @@ Note: `sudo cargo run` won't work — sudo resets PATH and drops `~/.cargo/bin`.
 - Use `nix` crate for all syscalls — no raw `unsafe { libc::... }`
 - Rootfs symlinks (Alpine uses absolute symlinks like `bin/sh -> /bin/busybox`) — always use `symlink_metadata()` instead of `exists()` when checking paths inside rootfs from the host
 - Container gets a clean env via `execvpe`, not host's env via `execvp`
-- Requires root to run (chroot, namespaces, mount are privileged operations)
+- Requires root to run (pivot_root, namespaces, mount are privileged operations)
+- Before `pivot_root`, always remount `/` as `MS_PRIVATE | MS_REC` — otherwise the kernel returns `EINVAL` (mount propagation inherited from systemd via `CLONE_NEWNS`)

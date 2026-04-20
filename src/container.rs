@@ -25,6 +25,7 @@ pub fn run(config: ContainerConfig) -> Result<()> {
             namespaces::set_hostname(&hostname)?;
             filesystem::setup_rootfs(&config.rootfs)?;
             filesystem::mount_proc()?;
+            filesystem::mount_tmp()?;
             filesystem::exec_command(&config.command, &config.args)?;
         }
     }

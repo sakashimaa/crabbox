@@ -32,6 +32,8 @@ impl ContainerConfig {
 }
 
 fn generate_id() -> String {
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{:08x}", ts.subsec_nanos())
 }

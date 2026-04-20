@@ -2,7 +2,7 @@
 
 A mini container runtime written in Rust. Think Docker, but built from scratch as a learning project.
 
-`crabbox` isolates processes using Linux kernel primitives: `chroot`/`pivot_root`, namespaces, and (soon) cgroups.
+`crabbox` isolates processes using Linux kernel primitives: `pivot_root`, namespaces, and (soon) cgroups.
 
 ## Install
 
@@ -75,7 +75,7 @@ src/
 ├── main.rs         # CLI parsing (clap)
 ├── config.rs       # ContainerConfig validation
 ├── container.rs    # Container lifecycle orchestration (unshare, fork, waitpid)
-├── filesystem.rs   # chroot/pivot_root, mounts, exec
+├── filesystem.rs   # pivot_root, mounts (/proc, /tmp), exec
 └── namespaces.rs   # Namespace setup (unshare, sethostname)
 ```
 
@@ -84,7 +84,7 @@ src/
 - [x] CLI + chroot isolation
 - [x] PID, mount, UTS namespaces
 - [x] Container ID generation
-- [ ] pivot_root (replace chroot)
+- [x] pivot_root (replaces chroot) + tmpfs `/tmp`
 - [ ] cgroups v2 (memory/CPU limits)
 - [ ] Networking (veth, bridge, NAT)
 - [ ] Image management (download rootfs by name)
