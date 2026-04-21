@@ -3,10 +3,14 @@ use nix::sched::{CloneFlags, unshare};
 use nix::unistd::sethostname;
 
 pub fn unshare_namespaces() -> Result<()> {
-    unshare(
-        CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUTS,
-    )
-    .context("failed to unshare namespaces — are you running as root?")?;
+    unshare(CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWUTS)
+        .context("failed to unshare namespaces — are you running as root?")?;
+    Ok(())
+}
+
+pub fn unshare_mount() -> Result<()> {
+    unshare(CloneFlags::CLONE_NEWNS)
+        .context("failed to unshare mount namespace")?;
     Ok(())
 }
 

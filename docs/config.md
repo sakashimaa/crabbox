@@ -6,10 +6,13 @@
 
 ```rust
 pub struct ContainerConfig {
-    pub id: String,         // auto-generated 8-char hex ID
-    pub rootfs: PathBuf,    // path to the extracted rootfs
-    pub command: String,    // command to run inside the container
-    pub args: Vec<String>,  // arguments for the command
+    pub id: String,                // auto-generated 8-char hex ID
+    pub rootfs: PathBuf,           // path to the extracted rootfs
+    pub command: String,           // command to run inside the container
+    pub args: Vec<String>,         // arguments for the command
+    pub memory_limit: Option<u64>, // bytes (None = unlimited)
+    pub cpu_limit: Option<f64>,    // fractional cores (None = unlimited)
+    pub pids_limit: Option<u64>,   // max processes (None = unlimited)
 }
 ```
 
@@ -31,12 +34,22 @@ Error: rootfs path does not exist: /tmp/crabbox/nonexistent
 Error: rootfs is missing /bin/sh — is this a valid rootfs? (/tmp/crabbox/empty)
 ```
 
+### `parse_memory`
+
+The `--memory` flag accepts human-readable sizes. `parse_memory` converts them to bytes:
+
+| Input | Result |
+|-------|--------|
+| `512K` | 524288 |
+| `64M` | 67108864 |
+| `1G` | 1073741824 |
+
 ### How CLI maps to config
 
 The CLI command:
 
 ```bash
-crabbox run /tmp/crabbox/alpine /bin/echo hello world
+crabbox run --memory 64M --cpus 0.5 --pids 32 /tmp/crabbox/alpine /bin/echo hello world
 ```
 
 Produces:
@@ -47,10 +60,13 @@ ContainerConfig {
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/echo"),
     args: vec!["hello", "world"],
+    memory_limit: Some(67108864),
+    cpu_limit: Some(0.5),
+    pids_limit: Some(32),
 }
 ```
 
-An interactive shell with no extra args:
+An interactive shell with no limits:
 
 ```bash
 crabbox run /tmp/crabbox/alpine /bin/sh
@@ -62,6 +78,9 @@ ContainerConfig {
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/sh"),
     args: vec![],
+    memory_limit: None,
+    cpu_limit: None,
+    pids_limit: None,
 }
 ```
 
@@ -87,7 +106,14 @@ CLI args
   → container::run()
     → namespaces::unshare_namespaces()  (CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS)
     → fork()
-        ├─ parent: waitpid(child)       (block until container exits)
+        ├─ parent:
+        │    → Cgroup::new(id)            (create /sys/fs/cgroup/crabbox/crabbox-<id>/)
+        │    → set_memory_limit()         (if --memory)
+        │    → set_cpu_limit()            (if --cpus)
+        │    → set_pids_limit()           (if --pids)
+        │    → add_pid(child)             (assign child to cgroup)
+        │    → waitpid(child)             (block until container exits)
+        │    → Cgroup::drop()             (move procs out, remove cgroup dir)
         └─ child (PID 1 in new namespace):
              → namespaces::set_hostname("crabbox-<id>")
              → filesystem::setup_rootfs()   (MS_PRIVATE + bind + pivot_root + cleanup)
@@ -96,7 +122,7 @@ CLI args
              → filesystem::exec_command()   (execvpe with clean env)
 ```
 
-The parent process stays alive for the lifetime of the container, waiting on the child via `waitpid`. When the child exits (e.g. user hits Ctrl+D), `waitpid` returns and the parent cleans up naturally — its mount namespace dies with it, taking all container-only mounts (like `/proc` and `/tmp`) with it.
+The parent process stays alive for the lifetime of the container, waiting on the child via `waitpid`. When the child exits (e.g. user hits Ctrl+D), `waitpid` returns and the `Cgroup` is dropped (moves processes back to root cgroup, removes the cgroup directory). The mount namespace dies with the process, taking all container-only mounts with it.
 
 ### Why fork?
 

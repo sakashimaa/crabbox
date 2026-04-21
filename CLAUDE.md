@@ -7,23 +7,25 @@ A mini container runtime in Rust — a Docker clone built from scratch as a lear
 `crabbox` isolates processes using Linux kernel primitives. The three pillars:
 1. **Filesystem isolation** — pivot_root
 2. **Namespace isolation** — PID, mount, UTS, network (via `unshare`)
-3. **Resource limits** — cgroups v2 (future)
+3. **Resource limits** — cgroups v2
 
 ## Current state
 
-Days 1–3 complete. Fully isolated container: own filesystem (pivot_root), own PID tree, own hostname, own mounts.
+Days 1–4 complete. Fully isolated container with resource limits: own filesystem (pivot_root), own PID tree, own hostname, own mounts, cgroups v2 enforcement.
 
 What works:
-- CLI: `crabbox run <rootfs> <command> [args...]`
+- CLI: `crabbox run [--memory <LIMIT>] [--cpus <FLOAT>] [--pids <COUNT>] <rootfs> <command> [args...]`
 - Container ID (8-char hex) + hostname `crabbox-<id>`
 - Namespaces: `unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS)` + `fork` so child is PID 1
 - `pivot_root` filesystem swap (MS_PRIVATE remount → self-bind → pivot → detach `/oldroot`)
 - Mounts inside container: `/proc` (procfs), `/tmp` (tmpfs)
 - Clean environment (`execvpe` with explicit PATH/HOME/TERM)
 - Config validation (rootfs exists, has `/bin/sh` via symlink_metadata)
+- cgroups v2: memory limit (`--memory 64M`), CPU limit (`--cpus 0.5`), PID limit (`--pids 32`)
+- Cgroup lifecycle: create → set limits → add PID → cleanup on Drop
 
-What's next (Day 4+):
-- cgroups v2 (memory/CPU limits)
+What's next (Day 5+):
+- TOML config file + `crabbox status` / `crabbox ps`
 - Networking (veth, bridge, NAT)
 - Image management (download rootfs by name)
 - Overlay FS (layers)
@@ -34,13 +36,14 @@ What's next (Day 4+):
 ```
 src/
 ├── main.rs         # CLI parsing (clap derive)
-├── config.rs       # ContainerConfig — validates rootfs and command
+├── config.rs       # ContainerConfig + parse_memory
 ├── container.rs    # Orchestrates container lifecycle
+├── cgroups.rs      # cgroups v2 resource limits (memory, CPU, PIDs)
 ├── filesystem.rs   # pivot_root, mounts (/proc, /tmp), execvpe
 └── namespaces.rs   # unshare_namespaces, set_hostname
 ```
 
-Flow: CLI args → `ContainerConfig::new()` → `container::run()` → `namespaces::unshare_namespaces()` → `fork()` → child: `set_hostname` → `filesystem::setup_rootfs` (pivot_root) → `mount_proc` → `mount_tmp` → `exec_command`; parent: `waitpid`.
+Flow: CLI args → `ContainerConfig::new()` → `container::run()` → `namespaces::unshare_namespaces()` → `fork()` → parent: `Cgroup::new` → set limits → `add_pid` → `waitpid` → Drop cleanup; child: `set_hostname` → `filesystem::setup_rootfs` (pivot_root) → `mount_proc` → `mount_tmp` → `exec_command`.
 
 ## Build and test
 
