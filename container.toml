@@ -1,0 +1,9 @@
+[container]
+rootfs = "/tmp/crabbox/alpine"
+command = "/bin/sh"
+hostname = "mycontainer"
+
+[limits]
+memory = "64M"
+cpus = 0.5
+pids = 32

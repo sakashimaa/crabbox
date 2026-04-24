@@ -12,11 +12,13 @@ pub fn run(config: ContainerConfig) -> Result<()> {
         config.id,
         config.rootfs.display()
     );
-    println!("[crabbox] command: {} {}", config.command, config.args.join(" "));
+    println!(
+        "[crabbox] command: {} {}",
+        config.command,
+        config.args.join(" ")
+    );
 
     namespaces::unshare_namespaces()?;
-
-    let hostname = format!("crabbox-{}", config.id);
 
     match unsafe { fork() }.context("fork failed")? {
         ForkResult::Parent { child } => {
@@ -37,7 +39,7 @@ pub fn run(config: ContainerConfig) -> Result<()> {
         }
         ForkResult::Child => {
             namespaces::unshare_mount()?;
-            namespaces::set_hostname(&hostname)?;
+            namespaces::set_hostname(&config.hostname)?;
             filesystem::setup_rootfs(&config.rootfs)?;
             filesystem::mount_proc()?;
             filesystem::mount_tmp()?;

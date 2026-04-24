@@ -47,19 +47,38 @@ You're now inside an isolated Alpine shell.
 
 ```
 crabbox run [OPTIONS] <rootfs> <command> [args...]
+crabbox run --config <container.toml>
+crabbox status <id|crabbox-id>
+crabbox ps
 ```
 
-| Argument    | Description                                |
-|-------------|--------------------------------------------|
-| `rootfs`    | Path to an extracted rootfs directory       |
-| `command`   | Command to execute inside the container     |
-| `args`      | Optional arguments passed to the command    |
+| Argument  | Description                              |
+| --------- | ---------------------------------------- |
+| `rootfs`  | Path to an extracted rootfs directory    |
+| `command` | Command to execute inside the container  |
+| `args`    | Optional arguments passed to the command |
 
-| Option       | Description                                     |
-|--------------|-------------------------------------------------|
-| `--memory`   | Memory limit (e.g. `64M`, `1G`, `512K`)         |
-| `--cpus`     | CPU limit as fractional cores (e.g. `0.5`, `2.0`) |
-| `--pids`     | Maximum number of processes                     |
+| Option     | Description                                       |
+| ---------- | ------------------------------------------------- |
+| `--config` | Run from a TOML config file                       |
+| `--memory` | Memory limit (e.g. `64M`, `1G`, `512K`)           |
+| `--cpus`   | CPU limit as fractional cores (e.g. `0.5`, `2.0`) |
+| `--pids`   | Maximum number of processes                       |
+
+### TOML config
+
+```toml
+[container]
+rootfs = "/tmp/crabbox/alpine"
+command = "/bin/echo"
+args = ["hello", "from", "config"]
+hostname = "mycontainer"
+
+[limits]
+memory = "64M"
+cpus = 0.5
+pids = 32
+```
 
 ### Examples
 
@@ -69,6 +88,13 @@ sudo crabbox run /tmp/crabbox/alpine /bin/sh
 
 # With resource limits
 sudo crabbox run --memory 64M --cpus 0.5 --pids 32 /tmp/crabbox/alpine /bin/sh
+
+# From a config file
+sudo crabbox run --config container.toml
+
+# Inspect live containers from another terminal
+sudo crabbox ps
+sudo crabbox status crabbox-7f3a2b1c
 
 # Run a single command
 sudo crabbox run /tmp/crabbox/alpine /bin/echo "hello from the box"
@@ -82,9 +108,9 @@ sudo crabbox run /tmp/crabbox/alpine /bin/cat /etc/os-release
 ```
 src/
 ├── main.rs         # CLI parsing (clap)
-├── config.rs       # ContainerConfig validation + parse_memory
+├── config.rs       # ContainerConfig validation, TOML config, parse_memory
 ├── container.rs    # Container lifecycle orchestration (unshare, fork, cgroups, waitpid)
-├── cgroups.rs      # cgroups v2 resource limits (memory, CPU, PIDs)
+├── cgroups.rs      # cgroups v2 resource limits + live status/ps
 ├── filesystem.rs   # pivot_root, mounts (/proc, /tmp), exec
 └── namespaces.rs   # Namespace setup (unshare, sethostname)
 ```
@@ -96,6 +122,7 @@ src/
 - [x] Container ID generation
 - [x] pivot_root (replaces chroot) + tmpfs `/tmp`
 - [x] cgroups v2 (memory/CPU/PID limits)
+- [x] TOML config + `status` / `ps`
 - [ ] Networking (veth, bridge, NAT)
 - [ ] Image management (download rootfs by name)
 - [ ] Overlay FS (layers)
@@ -106,8 +133,10 @@ src/
 
 ## Dependencies
 
-| Crate   | Purpose                              |
-|---------|--------------------------------------|
-| `clap`  | CLI argument parsing (derive macros) |
-| `nix`   | Safe Rust wrappers over Linux syscalls |
-| `anyhow`| Ergonomic error handling             |
+| Crate    | Purpose                                |
+| -------- | -------------------------------------- |
+| `clap`   | CLI argument parsing (derive macros)   |
+| `nix`    | Safe Rust wrappers over Linux syscalls |
+| `anyhow` | Ergonomic error handling               |
+| `serde`  | TOML config deserialization            |
+| `toml`   | TOML parser                            |

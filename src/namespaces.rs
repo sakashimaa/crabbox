@@ -9,8 +9,7 @@ pub fn unshare_namespaces() -> Result<()> {
 }
 
 pub fn unshare_mount() -> Result<()> {
-    unshare(CloneFlags::CLONE_NEWNS)
-        .context("failed to unshare mount namespace")?;
+    unshare(CloneFlags::CLONE_NEWNS).context("failed to unshare mount namespace")?;
     Ok(())
 }
 

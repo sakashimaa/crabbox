@@ -10,6 +10,7 @@ pub struct ContainerConfig {
     pub rootfs: PathBuf,           // path to the extracted rootfs
     pub command: String,           // command to run inside the container
     pub args: Vec<String>,         // arguments for the command
+    pub hostname: String,          // hostname inside the container
     pub memory_limit: Option<u64>, // bytes (None = unlimited)
     pub cpu_limit: Option<f64>,    // fractional cores (None = unlimited)
     pub pids_limit: Option<u64>,   // max processes (None = unlimited)
@@ -18,7 +19,11 @@ pub struct ContainerConfig {
 
 ### The `id` field
 
-`ContainerConfig::new()` auto-generates a short hex ID (e.g. `7f3a2b1c`) from the system clock's nanoseconds. It's used for the container hostname (`crabbox-7f3a2b1c`) and will become the handle for future `list`/`stop`/`inspect` commands. No dependency on the `uuid` crate — nanosecond resolution is plenty unique per-machine-per-run.
+`ContainerConfig::new()` auto-generates a short hex ID (e.g. `7f3a2b1c`) from the system clock's nanoseconds. It's used as the cgroup handle (`crabbox-7f3a2b1c`) and as the default hostname. No dependency on the `uuid` crate — nanosecond resolution is plenty unique per-machine-per-run.
+
+### The `hostname` field
+
+CLI runs default to `crabbox-<id>`. TOML config can override this with `container.hostname`; if provided, it must be non-empty and at most 63 bytes.
 
 ### Validation
 
@@ -60,6 +65,7 @@ ContainerConfig {
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/echo"),
     args: vec!["hello", "world"],
+    hostname: String("crabbox-7f3a2b1c"),
     memory_limit: Some(67108864),
     cpu_limit: Some(0.5),
     pids_limit: Some(32),
@@ -78,10 +84,34 @@ ContainerConfig {
     rootfs: PathBuf("/tmp/crabbox/alpine"),
     command: String("/bin/sh"),
     args: vec![],
+    hostname: String("crabbox-9c1d4e8a"),
     memory_limit: None,
     cpu_limit: None,
     pids_limit: None,
 }
+```
+
+## TOML config files
+
+`crabbox run --config container.toml` reads a TOML file and converts it into the same runtime `ContainerConfig` used by CLI flags.
+
+```toml
+[container]
+rootfs = "/tmp/crabbox/alpine"
+command = "/bin/echo"
+args = ["hello", "from", "config"]
+hostname = "mycontainer"
+
+[limits]
+memory = "64M"
+cpus = 0.5
+pids = 32
+```
+
+`args`, `hostname`, and the whole `[limits]` table are optional. Config-file runs do not mix with CLI flags or positional command arguments yet, so this is rejected:
+
+```bash
+crabbox run --config container.toml --memory 64M
 ```
 
 ## Container environment
@@ -101,8 +131,8 @@ Without this, the container would inherit the host's `PATH` (e.g. `/home/user/.c
 ## Flow
 
 ```
-CLI args
-  → ContainerConfig::new()           (validate + generate id)
+CLI args or TOML config
+  → ContainerConfig runtime          (validate + generate id)
   → container::run()
     → namespaces::unshare_namespaces()  (CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS)
     → fork()
@@ -113,9 +143,9 @@ CLI args
         │    → set_pids_limit()           (if --pids)
         │    → add_pid(child)             (assign child to cgroup)
         │    → waitpid(child)             (block until container exits)
-        │    → Cgroup::drop()             (move procs out, remove cgroup dir)
+        │    → Cgroup::drop()             (kill remaining cgroup procs, remove cgroup dir)
         └─ child (PID 1 in new namespace):
-             → namespaces::set_hostname("crabbox-<id>")
+             → namespaces::set_hostname(config.hostname)
              → filesystem::setup_rootfs()   (MS_PRIVATE + bind + pivot_root + cleanup)
              → filesystem::mount_proc()     (mount procfs at /proc)
              → filesystem::mount_tmp()      (mount tmpfs at /tmp)
